@@ -14,6 +14,7 @@ const preview = ref<{ headers: string[]; count: number } | null>(null)
 const status = ref<'idle' | 'working' | 'error' | 'done'>('idle')
 const message = ref('')
 const result = ref<{ slug: string; copySource: 'gemini' | 'template'; mapping: ColumnMapping } | null>(null)
+const resultPanel = ref<HTMLElement | null>(null)
 let parsed: Papa.ParseResult<Record<string, string>> | null = null
 
 // Every role the pipeline can fill, so the panel can also show what wasn't found.
@@ -69,6 +70,12 @@ async function generate() {
     result.value = res
     status.value = 'done'
     message.value = ''
+    // The panel renders below the form, so without this the viewport doesn't move
+    // and it looks like nothing happened. Focus follows the scroll so keyboard and
+    // screen-reader users land on the result too.
+    await nextTick()
+    resultPanel.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    resultPanel.value?.focus()
   } catch (err: any) {
     status.value = 'error'
     message.value = err?.data?.statusMessage ?? err?.message ?? 'Something went wrong'
@@ -108,7 +115,7 @@ async function generate() {
 
     <!-- What the pipeline made of the file: which header filled which role, and
          which roles it couldn't fill (those sections are left off the page). -->
-    <section v-if="result" class="result" role="status">
+    <section v-if="result" ref="resultPanel" class="result" role="status" tabindex="-1">
       <h2>Page generated</h2>
       <p class="hint">
         Copy written by {{ result.copySource === 'gemini' ? 'Gemini' : 'the built-in template (Gemini unavailable)' }}.

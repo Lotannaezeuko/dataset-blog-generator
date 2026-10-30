@@ -99,7 +99,9 @@ const cards = computed(() => [
         <p class="lede">{{ b.copy.intro }}</p>
       </header>
 
-      <StatCards :cards="cards" />
+      <!-- With only the row count there's nothing worth a card row: the figure is
+           already in the meta line above and in the ranking heading below. -->
+      <StatCards v-if="cards.length > 1" :cards="cards" />
 
       <section id="ranking">
         <h2>The full ranking</h2>

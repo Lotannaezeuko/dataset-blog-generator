@@ -254,6 +254,22 @@ a readable error.
 
 ---
 
+## Known limitations
+
+- **There is no way to delete a generated blog.** The API has create, list and get, but no
+  delete. Removing one means clearing its key from the storage backend by hand. On a
+  publicly reachable deploy that also means an unwanted upload cannot be taken down from
+  the interface.
+- **Generated blogs are shared and public, not per-user.** There is no authentication or
+  session handling: every blog is saved to one store, listed on `/blog` for all visitors
+  and included in `sitemap.xml`. That suits a publishing tool, but it means the upload form
+  should not be treated as a private workspace. `NUXT_UPLOAD_PASSCODE` restricts who can
+  generate a page, but does not scope what they can see.
+- **Column detection is automatic with no manual override.** The upload form reports what it
+  detected for each role, including the roles it could not fill, so a mistake is visible.
+  But if it maps the wrong column there is currently no way to correct it short of renaming
+  the CSV header.
+
 ## Design decisions and trade-offs
 
 - **One dynamic SSR route, not generated static pages.** The brief requires upload → page
@@ -273,6 +289,8 @@ a readable error.
 
 ### What I would do next
 
+- A `DELETE /api/blogs/:slug` endpoint, with a confirmation step on the blog index, so a
+  generated page can be removed without touching the storage backend.
 - Validate the generated copy against the facts automatically — reject any number in the
   prose that does not appear in `buildFacts()`, rather than relying on the prompt.
 - Per-page Open Graph images.
