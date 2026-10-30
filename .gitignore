@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+
+# Nuxt / Nitro build output
+.nuxt
+.output
+.nitro
+.cache
+dist
+
+# Generated blogs in local development (Nitro fs storage)
+.data
+
+# Environment variables.
+# .env.example is committed on purpose: it documents every variable, contains no
+# secrets, and the README setup steps tell you to copy it to .env.
+.env
+.env.*
+!.env.example
+
+# Deployment
+.vercel
+
+# AI assistant config and personal working notes - local only
+CLAUDE.md
+.claude/
+.cursor/
+.aider*
+FILES.md
+PLAN.md
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+logs
+
+# Test coverage
+coverage
+
+# Editor and OS cruft
+.DS_Store
+.idea
+.vscode
+*.swp
+Thumbs.db

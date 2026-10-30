@@ -1,0 +1,288 @@
+/* ---------------------------------------------------------------------------
+   One stylesheet, hand-written, no CSS framework.
+
+   Conventions:
+   - A neutral grey scale carries the layout; a single purple accent marks
+     anything interactive plus the chart bars.
+   - One radius token (--radius) for every corner in the app.
+   - Borders rather than shadows.
+   - System fonts, so there is no webfont request blocking first paint.
+   - The ranking table scrolls horizontally instead of shrinking, so wide
+     datasets stay readable on a phone.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Neutral scale, light to dark */
+  --n0: #ffffff;
+  --n50: #f7f7f8;
+  --n100: #eeeff1;
+  --n200: #e2e4e8;
+  --n300: #c9ccd2;
+  --n500: #6b7280;
+  --n700: #3d4450;
+  --n900: #1b2027;
+
+  --ink: var(--n900);
+  --muted: var(--n500);
+  --line: var(--n200);
+  --bg: var(--n50);
+  --card: var(--n0);
+
+  /* Purple accent. One hue, four steps, used for anything interactive
+     plus the chart bars. Taken from the same family as Beauhurst's link colour. */
+  --accent: #4b48b4;
+  --accent-dark: #3a3792; /* hover / pressed */
+  --accent-line: #cfcdee; /* borders and bar tracks */
+  --accent-soft: #eeedfa; /* tinted backgrounds */
+
+  /* One radius for everything. Native controls are reset below, because iOS
+     Safari otherwise rounds search inputs, file pickers and buttons on its own. */
+  --radius: 2px;
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.6;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+/* iOS Safari applies its own rounded corners and inner shadow to native
+   controls, which is why corners looked inconsistent on a phone but fine on
+   desktop. This opts every control out so --radius is the only radius. */
+/* File inputs are left alone deliberately: resetting appearance on them can
+   break the picker in Safari, and the upload is the one flow that must work. */
+input:not([type='file']), button, select, textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: var(--radius);
+}
+/* The "Choose file" button inside <input type="file"> is a separate element,
+   so it can be squared off without touching the input itself. */
+input[type='file']::file-selector-button {
+  font: inherit;
+  font-weight: 600;
+  padding: 7px 12px;
+  margin-right: 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+}
+input[type='file']::file-selector-button:hover { background: var(--accent-line); }
+
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px 80px; }
+.narrow { max-width: 660px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Header ---------- */
+
+.site-header { border-bottom: 1px solid var(--line); background: var(--card); margin-bottom: 40px; }
+.site-header .wrap { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; gap: 16px; }
+.brand { font-weight: 650; letter-spacing: -0.01em; text-decoration: none; color: var(--ink); }
+.site-header nav { display: flex; gap: 20px; }
+.site-header nav a { text-decoration: none; color: var(--muted); font-size: 0.92rem; }
+.site-header nav a:hover { color: var(--ink); }
+
+/* ---------- Type ---------- */
+
+h1 {
+  font-size: clamp(1.9rem, 1.3rem + 2.4vw, 2.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+  font-weight: 680;
+  margin: 4px 0 14px;
+  max-width: 24ch;
+}
+h2 {
+  font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  line-height: 1.25;
+  letter-spacing: -0.014em;
+  font-weight: 650;
+  margin: 56px 0 14px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+/* The first section after the stat cards shouldn't get a second rule above it */
+.article > article > section:first-of-type h2 { border-top: 0; padding-top: 0; margin-top: 44px; }
+
+h3 { font-size: 1rem; font-weight: 620; }
+p { margin: 0 0 16px; max-width: 72ch; }
+
+.lede { font-size: 1.1rem; color: var(--n700); max-width: 68ch; }
+.meta, .crumbs, .source { color: var(--muted); font-size: 0.875rem; }
+.crumbs { margin-bottom: 20px; }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--accent); }
+.meta { margin-bottom: 20px; }
+.source { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); }
+
+/* ---------- Stat cards ---------- */
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 32px 0 8px;
+}
+.stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.stat dt { font-size: 0.78rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.stat dd {
+  margin: 6px 0 0;
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Ranking table ---------- */
+
+.search { display: block; margin-bottom: 14px; }
+.search input {
+  width: 100%; max-width: 340px; padding: 9px 12px;
+  border: 1px solid var(--n300); border-radius: var(--radius);
+  font: inherit; background: var(--card);
+}
+.search input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.ranking { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.ranking th, .ranking td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ranking tbody tr:last-child th, .ranking tbody tr:last-child td { border-bottom: 0; }
+.ranking tbody tr:hover { background: var(--n50); }
+.ranking thead th {
+  background: var(--accent-soft);
+  font-size: 0.72rem; font-weight: 650;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-line);
+  white-space: nowrap;
+}
+.ranking .num, .ranking .rank { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ranking .rank { color: var(--muted); width: 1%; }
+.ranking .company { font-weight: 600; min-width: 210px; }
+.ranking .company a { text-decoration: none; }
+.ranking .company a:hover { text-decoration: underline; }
+.ranking .company small { display: block; font-weight: 400; color: var(--muted); margin-top: 3px; font-size: 0.82rem; max-width: 46ch; }
+.ranking .tags { color: var(--muted); font-size: 0.84rem; min-width: 150px; }
+
+/* ---------- Bar lists ---------- */
+
+.bars { list-style: none; padding: 0; margin: 20px 0 0; max-width: 680px; }
+.bars li {
+  display: grid;
+  grid-template-columns: minmax(110px, 200px) 1fr 44px;
+  gap: 14px; align-items: center;
+  margin: 0 0 9px; font-size: 0.9rem;
+}
+.bar-label { color: var(--n700); }
+.bar-track { background: var(--accent-soft); border-radius: var(--radius); height: 10px; }
+.bar-fill { display: block; background: var(--accent); height: 100%; border-radius: var(--radius); }
+.bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--n700); }
+
+/* ---------- FAQ ---------- */
+
+details { border-bottom: 1px solid var(--line); padding: 14px 0; }
+details p { margin: 10px 0 0; color: var(--n700); }
+summary { cursor: pointer; }
+summary h3 { display: inline; }
+
+/* ---------- Blog list ---------- */
+
+.blog-list { list-style: none; padding: 0; display: grid; gap: 14px; }
+.blog-list a {
+  display: block; padding: 22px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  text-decoration: none; color: inherit;
+}
+.blog-list a:hover { border-color: var(--accent); }
+.blog-list a:hover h2 { color: var(--accent); }
+.blog-list h2 { margin: 0 0 8px; font-size: 1.2rem; border-top: 0; padding-top: 0; }
+.blog-list p { margin: 0 0 14px; color: var(--muted); font-size: 0.92rem; }
+.tag {
+  display: inline-block; font-size: 0.72rem;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid var(--accent-line);
+  padding: 3px 9px; border-radius: var(--radius); margin-right: 6px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+/* ---------- Upload form ---------- */
+
+.upload { display: grid; gap: 18px; margin-top: 28px; max-width: 460px; }
+.upload label { display: grid; gap: 6px; font-weight: 600; font-size: 0.92rem; }
+.upload label small { font-weight: 400; color: var(--muted); }
+.upload input {
+  font: inherit; font-weight: 400; padding: 9px 11px;
+  border: 1px solid var(--n300); border-radius: var(--radius); background: var(--card);
+}
+.upload input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.upload button {
+  font: inherit; font-weight: 600; padding: 12px;
+  background: var(--accent); color: var(--n0);
+  border: 0; border-radius: var(--radius); cursor: pointer;
+}
+.upload button:hover:not(:disabled) { background: var(--accent-dark); }
+.upload button:disabled { opacity: 0.4; cursor: default; }
+.hint { color: var(--muted); font-size: 0.875rem; margin: 0; }
+.status { font-size: 0.9rem; }
+.status.error { color: #b42318; }
+
+/* ---------- Upload result: the detected column mapping ---------- */
+
+.result {
+  margin-top: 44px; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
+}
+.result h2 { margin-top: 0; border-top: 0; padding-top: 0; }
+.result h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 24px 0 10px; }
+.mapping {
+  display: grid; grid-template-columns: minmax(120px, auto) 1fr;
+  gap: 8px 18px; margin: 0 0 24px; font-size: 0.9rem;
+}
+.mapping dt { color: var(--muted); }
+.mapping dd { margin: 0; }
+.mapping code {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 2px 7px; border-radius: var(--radius);
+  font-size: 0.86rem;
+}
+.mapping .missing { color: var(--n300); font-style: italic; }
+.view { display: inline-block; font-weight: 600; text-decoration: none; }
+.view:hover { text-decoration: underline; }
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 600px) {
+  .wrap { padding: 0 16px 56px; }
+  .site-header { margin-bottom: 28px; }
+  .site-header .wrap { padding: 14px 16px; }
+  h1 { max-width: none; }
+  h2 { margin-top: 44px; }
+  .lede { font-size: 1.03rem; }
+
+  /* Bar label on its own line, bar underneath, so nothing is squashed */
+  .bars li { grid-template-columns: 1fr 44px; gap: 6px 14px; margin-bottom: 14px; }
+  .bar-track { grid-column: 1 / -1; grid-row: 2; }
+
+  .stat { padding: 14px; }
+  .stat dd { font-size: 1.35rem; }
+  .ranking th, .ranking td { padding: 10px 12px; }
+}

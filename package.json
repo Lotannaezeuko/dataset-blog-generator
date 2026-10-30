@@ -1,0 +1,23 @@
+{
+  "name": "dataset-blog-generator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.35.0",
+    "nuxt": "^4.6.3",
+    "papaparse": "^5.5.3",
+    "vue": "latest",
+    "vue-router": "latest"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.16",
+    "vitest": "^3.2.4"
+  }
+}
