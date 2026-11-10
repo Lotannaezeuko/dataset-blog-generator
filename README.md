@@ -24,8 +24,9 @@ The fintech page is seeded on first boot, so there is something to look at immed
 The app also runs without a key — it falls back to template-written copy.
 
 ```bash
-npm test        # 17 unit tests, no network or API key needed
-npm run build   # production build
+npm test                     # 26 unit tests, no network or API key needed
+npm run build                # production build
+npm run samples -- <label>   # writes the fintech, healthtech and cleantech copy to samples/<label>/
 ```
 
 | Variable | Required | Purpose |
@@ -59,8 +60,9 @@ server and their numbers stay as real text for crawlers and screen readers.
 ## Approach
 
 ```
-CSV  ──▶  detect columns  ──▶  clean rows  ──▶  compute statistics  ──▶  write copy  ──▶  save
-          columns.ts          normalise.ts      stats.ts                 copy.ts         storage
+CSV  ──▶  detect columns  ──▶  clean rows  ──▶  compute statistics  ──▶  write copy        ──▶  save
+          columns.ts          normalise.ts      stats.ts                 copy.ts            storage
+                                                (+ key findings)         methodology.ts
 ```
 
 The browser parses the CSV with Papa Parse and POSTs the rows as JSON.
@@ -97,6 +99,43 @@ wording, not calculation.
 I checked this on the fintech dataset by comparing every figure in the generated copy
 against the computed statistics — total £622m, mean £6.2m, median £4.1m, largest Nevis at
 £30.3m, top-10 share 33%, London 78 companies (78%) — all exact.
+
+### Writing for Beauhurst: narrative, search and tone
+
+Feedback on the first version asked for a stronger narrative built around the data, copy
+that answers real search queries, and Beauhurst's tone of voice. Each change keeps the rule
+above — numbers are computed in code, the model only words them.
+
+- **Key findings give the article its angle.** `stats.ts` writes at most two headline
+  findings as finished sentences: funding concentration (the top ten's share, and the top
+  company against the median) and regional dominance. Each appears only when the data
+  supports it — concentration needs more than ten funded companies, or "the top ten" is
+  everyone. The prompt opens the intro with the first finding and builds the sections
+  around them; the template uses them too.
+- **Search queries drive the FAQ.** `searchQueries()` builds the questions people search
+  for ("Which UK Fintech company has raised the most?") from the industry and geography,
+  and only those the data can answer. Each carries an answer computed in code. Gemini must
+  answer every one; the template uses the computed answers. The FAQ feeds the `FAQPage`
+  structured data, so it now targets real search intent.
+- **A methodology section, written in code.** `methodology.ts` states how the ranking is
+  ordered, how many companies lack a funding figure or location and are left out of those
+  statistics, which columns were missing, and when amounts were in another currency (they
+  are read as pounds, and the page says so rather than hiding it). No LLM involved.
+- **Tone of voice in the prompt.** Authoritative but plain, data-led (lead with the
+  figure), British English, paragraphs of at most three sentences, a list of hype words to
+  avoid, no speculation about causes or trends, no repeated sentences. The template copy
+  was brought into line — it no longer claims an industry "continues to attract
+  investment", which a single snapshot cannot show.
+- **Funding figures name who they cover.** Companies with no amount are excluded from
+  every funding statistic, so "the 30 companies raised £567m" was wrong when only 28 had a
+  figure. Funding stats now record their own `count`; the facts tell the model who the
+  figures cover, and the template says "the 28 companies with a funding figure".
+- **Meta descriptions are statements, not adverts.** The model drifted into "Explore…",
+  "Discover London's dominance…". The rule now asks for a sentence whose subject is the
+  companies, with one computed figure, and no call to action anywhere in it.
+
+`npm run samples -- <label>` regenerates the three blogs to Markdown, which is how each
+change was compared against a baseline taken before any of them.
 
 ### Connecting to Gemini
 
@@ -142,7 +181,8 @@ failures are specific rather than generic.
 | Failure | What happens |
 | --- | --- |
 | No API key configured | Template copy is used; the call is never attempted. |
-| Gemini errors or is rate-limited | Caught, logged with Google's own message, template copy used. |
+| Gemini is overloaded (503, "high demand") | Retried after 2s, then 5s. All attempts share the one 45-second budget, so retries never make an upload wait longer. |
+| Gemini errors otherwise or is rate-limited | Not retried — a bad key or exhausted quota won't fix itself. Logged with Google's own message, template copy used. |
 | Gemini stalls without responding | Aborted after 45 seconds by `AbortSignal.timeout`, then template copy. |
 | Gemini returns unusable JSON | `validateCopy` rejects it if required fields are missing, and falls back field by field for anything over-length or absent. |
 | A column is missing | That statistic is `null` and its whole section is omitted. |
@@ -164,8 +204,9 @@ the copy.
 npm test
 ```
 
-17 Vitest tests covering column detection, money parsing, normalisation, statistics and two
-end-to-end `buildBlog` runs. They run against `server/lib`, which is deliberately plain
+26 Vitest tests covering column detection, money parsing, normalisation, statistics, key
+findings, search queries, the funding denominator, the methodology text, Gemini's 503
+retry (with `$fetch` stubbed, so no network) and end-to-end `buildBlog` runs. They run against `server/lib`, which is deliberately plain
 TypeScript with no Nuxt imports, so they need no framework harness, running server, network
 or API key.
 

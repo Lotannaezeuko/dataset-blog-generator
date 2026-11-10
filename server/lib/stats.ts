@@ -3,6 +3,7 @@
 // Each section is null when the dataset has no column for it.
 
 import type { CompanyRow, CountItem, DatasetStats } from '#shared/types/blog'
+import { formatGBP, formatPct } from '../../shared/utils/format'
 
 function countBy(values: (string | null)[]): CountItem[] {
   const counts = new Map<string, number>()
@@ -46,6 +47,7 @@ export function computeStats(rows: CompanyRow[], amountLabel: string | null): Da
     })).filter(b => b.count > 0)
 
     funding = {
+      count: funded.length,
       total,
       mean: total / funded.length,
       median: median(funded.map(r => r.amount)),
@@ -100,5 +102,43 @@ export function computeStats(rows: CompanyRow[], amountLabel: string | null): Da
     ? { median: Math.round(median(yearList)), oldest: Math.min(...yearList), newest: Math.max(...yearList) }
     : null
 
-  return { count: n, amountLabel, funding, regions, tags, sizes, stages, years }
+  const findings = keyFindings(n, funding, funded.length, regions)
+
+  return { count: n, amountLabel, funding, regions, tags, sizes, stages, years, findings }
+}
+
+/**
+ * At most two headline findings, written as finished sentences so every figure
+ * in them comes from code. They give the article its angle; the LLM is told to
+ * build the intro and conclusion around them. Each is skipped when the data
+ * can't support it.
+ */
+function keyFindings(
+  total: number,
+  funding: DatasetStats['funding'],
+  fundedCount: number,
+  regions: DatasetStats['regions']
+): string[] {
+  const findings: string[] = []
+
+  // Funding concentration. Needs more than ten funded companies, otherwise
+  // "the top ten" is everyone and the share is meaningless.
+  if (funding && fundedCount > 10 && funding.median > 0) {
+    const multiple = (funding.top.amount / funding.median).toFixed(1).replace(/\.0$/, '')
+    findings.push(
+      `The ten best-funded companies hold ${formatPct(funding.top10Share)} of all funding in the ranking, ` +
+      `and ${funding.top.name} has raised ${multiple} times the median of ${formatGBP(funding.median)}.`
+    )
+  }
+
+  // Regional dominance: the share is of companies with a known location.
+  if (regions) {
+    const located = regions.counts.reduce((s, r) => s + r.count, 0)
+    findings.push(
+      `${regions.leader.label} is home to ${regions.leader.count} of the ${located} companies` +
+      `${located < total ? ' with a known location' : ''} (${formatPct(regions.leaderShare)}).`
+    )
+  }
+
+  return findings
 }

@@ -39,6 +39,7 @@ export interface DatasetStats {
   count: number
   amountLabel: string | null // the original header, e.g. "Total Raised"
   funding: {
+    count: number // companies with a funding figure; every funding stat covers only these
     total: number
     mean: number
     median: number
@@ -62,6 +63,7 @@ export interface DatasetStats {
   sizes: CountItem[] | null
   stages: CountItem[] | null
   years: { median: number; oldest: number; newest: number } | null
+  findings: string[] // at most two headline sentences, the article's angle; empty if the data can't support any
 }
 
 /** The prose. Written by Gemini, or by the template fallback. */
@@ -88,6 +90,7 @@ export interface BlogRecord {
   mapping: ColumnMapping
   stats: DatasetStats
   copy: BlogCopy
+  methodology?: string[] // paragraphs written in code from the dataset; optional so older saved blogs still load
   rows: CompanyRow[]
 }
 

@@ -145,6 +145,11 @@ const cards = computed(() => [
         <p>{{ b.copy.conclusion }}</p>
       </section>
 
+      <section v-if="b.methodology?.length" id="methodology">
+        <h2>Methodology</h2>
+        <p v-for="p in b.methodology" :key="p">{{ p }}</p>
+      </section>
+
       <footer class="source">
         Source: {{ b.sourceFile }}. Copy written by {{ b.copySource === 'gemini' ? 'Gemini from computed statistics' : 'template' }}.
       </footer>

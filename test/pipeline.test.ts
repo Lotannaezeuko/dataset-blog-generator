@@ -2,11 +2,11 @@
 // These check the part that matters most in the demo: an unseen CSV still works.
 import { readFileSync } from 'node:fs'
 import Papa from 'papaparse'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { detectColumns, parseMoney } from '../server/lib/columns'
 import { normaliseRows } from '../server/lib/normalise'
 import { computeStats } from '../server/lib/stats'
-import { templateCopy } from '../server/lib/copy'
+import { buildFacts, geminiCopy, searchQueries, templateCopy } from '../server/lib/copy'
 import { buildBlog } from '../server/lib/pipeline'
 
 const load = (file: string) => {
@@ -47,6 +47,29 @@ describe('fintech seed', () => {
     // "Wealth, asset and investment management" must stay one tag, not split on its commas
     expect(stats.tags!.top.map(t => t.label)).toContain('Wealth, asset and investment management')
   })
+
+  it('builds a search query for every section the data supports, and the FAQ answers them', () => {
+    const companies = normaliseRows(rows, mapping)
+    const ctx = { industry: 'Fintech', geography: 'UK', stats: computeStats(companies, mapping.amount!), topCompanies: companies.slice(0, 5).map(c => c.name) }
+    const queries = searchQueries(ctx)
+    expect(queries.map(q => q.question)).toEqual([
+      'What are the top Fintech companies in the UK?',
+      'Which UK Fintech company has raised the most?',
+      'How much funding have UK Fintech companies raised?',
+      'Where are Fintech companies in the UK based?',
+      'What do UK Fintech companies specialise in?'
+    ])
+    expect(queries[1]!.answer).toBe('Nevis, with £30.3m raised.')
+    expect(templateCopy(ctx).faq).toEqual(queries)
+  })
+
+  it('derives both key findings, with figures computed in code', () => {
+    const stats = computeStats(normaliseRows(rows, mapping), mapping.amount!)
+    expect(stats.findings).toEqual([
+      'The ten best-funded companies hold 33% of all funding in the ranking, and Nevis has raised 7.3 times the median of £4.1m.',
+      'London is home to 78 of the 100 companies (78%).'
+    ])
+  })
 })
 
 describe('a differently shaped dataset', () => {
@@ -68,6 +91,19 @@ describe('a differently shaped dataset', () => {
     const stats = computeStats(companies, mapping.amount!)
     expect(stats.sizes).toBeNull() // no employees column, so that section disappears
     expect(stats.years).not.toBeNull()
+  })
+
+  it('says funding totals cover only the companies with a figure', () => {
+    // 2 of the 30 have no funding, so "the 30 companies raised £567m" would be wrong.
+    const companies = normaliseRows(rows, mapping)
+    const stats = computeStats(companies, mapping.amount!)
+    const ctx = { industry: 'Healthtech', geography: 'UK', stats, topCompanies: companies.slice(0, 5).map(c => c.name) }
+    expect(stats.funding!.count).toBe(28)
+    expect(buildFacts(ctx).funding!.coversOnly).toBe('the 28 companies with a funding figure')
+    const copy = templateCopy(ctx)
+    expect(copy.intro).toContain('The 28 companies with a funding figure have raised £567m between them.')
+    expect(copy.conclusion).toMatch(/^The 28 companies with a funding figure have raised £567m/)
+    expect(copy.faq[2]!.answer).toMatch(/^The 28 companies with a funding figure/)
   })
 })
 
@@ -119,6 +155,13 @@ describe('unfamiliar headers', () => {
     expect(stats.funding!.bottom).toEqual({ name: 'Byline NLP', amount: 640_000 })
     expect(stats.regions!.leader).toEqual({ label: 'London', count: 4 })
   })
+
+  it('skips the concentration finding with only ten funded companies', () => {
+    // Ten funded companies means "the top ten" is all of them, so no concentration
+    // finding. One company has no city, so the region finding says so.
+    const stats = computeStats(companies, mapping.amount!)
+    expect(stats.findings).toEqual(['London is home to 4 of the 11 companies with a known location (36%).'])
+  })
 })
 
 // The worst case for the demo: a CSV with nothing but names and a description.
@@ -146,6 +189,7 @@ describe('a dataset with almost no columns', () => {
     expect(stats.sizes).toBeNull()
     expect(stats.stages).toBeNull()
     expect(stats.years).toBeNull()
+    expect(stats.findings).toEqual([])
   })
 
   it('still produces a complete page of copy', () => {
@@ -159,8 +203,39 @@ describe('a dataset with almost no columns', () => {
     expect(copy.fundingInsight).toBeUndefined()
     expect(copy.regionInsight).toBeUndefined()
     // ...but the FAQ is never empty, or the FAQPage structured data would be invalid.
-    expect(copy.faq.length).toBeGreaterThan(0)
+    // Only the query the data can answer survives: no funding, region or sector questions.
+    expect(copy.faq.map(f => f.question)).toEqual(['What are the top Cleantech companies in the UK?'])
     expect(copy.faq[0]!.answer).toContain('8')
+  })
+})
+
+// Gemini itself is never called: $fetch is stubbed, so these run offline.
+describe('geminiCopy retries', () => {
+  const ctx = { industry: 'AI', geography: 'UK', stats: computeStats([], null), topCompanies: [] }
+  const reply = { steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify({ h1: 'Headline', intro: 'Intro' }) }] }] }
+  const failure = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status, data: { error: { message: `status ${status}` } } })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('retries a 503 (model overloaded) and then succeeds', async () => {
+    const fetch = vi.fn().mockRejectedValueOnce(failure(503)).mockResolvedValueOnce(reply)
+    vi.stubGlobal('$fetch', fetch)
+    const copy = await geminiCopy(ctx, { apiKey: 'k', model: 'm', retryDelaysMs: [0, 0] })
+    expect(copy.h1).toBe('Headline')
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up after the last retry', async () => {
+    const fetch = vi.fn().mockRejectedValue(failure(503))
+    vi.stubGlobal('$fetch', fetch)
+    await expect(geminiCopy(ctx, { apiKey: 'k', model: 'm', retryDelaysMs: [0, 0] })).rejects.toThrow(/status 503/)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry errors that will not clear on their own', async () => {
+    const fetch = vi.fn().mockRejectedValue(failure(400))
+    vi.stubGlobal('$fetch', fetch)
+    await expect(geminiCopy(ctx, { apiKey: 'k', model: 'm', retryDelaysMs: [0, 0] })).rejects.toThrow(/status 400/)
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -175,6 +250,23 @@ describe('buildBlog end to end', () => {
     expect(blog.stats.funding!.top.name).toBe('Orrery Labs')
     expect(blog.copy.h1).toContain('AI')
     expect(blog.mapping.name).toBe('Entity')
+  })
+
+  it('writes a methodology that states the gaps in the data', async () => {
+    const { headers, rows } = load('ai_alt_headers.csv')
+    const blog = await buildBlog({ headers, rows, industry: 'AI', geography: 'UK', sourceFile: 'ai_alt_headers.csv' })
+    expect(blog.methodology).toEqual([
+      'This ranking covers 12 UK AI companies from ai_alt_headers.csv, listed by cash raised, highest first.',
+      '2 of the 12 companies have no cash raised figure and are left out of the funding statistics. 1 has no location and is left out of the regional breakdown.',
+      'Totals, medians and averages are calculated over companies with a cash raised figure, and rounded for display; the table shows exact amounts. 2 amounts were given in another currency and are shown in pounds without conversion.',
+      'Every figure on this page is calculated directly from the source data.'
+    ])
+  })
+
+  it('says which sections are missing when columns are absent', async () => {
+    const { headers, rows } = load('cleantech_sparse.csv')
+    const blog = await buildBlog({ headers, rows, industry: 'Cleantech', geography: 'UK', sourceFile: 'cleantech_sparse.csv' })
+    expect(blog.methodology![1]).toBe('The source has no funding, location, sector or company size data, so those sections are omitted.')
   })
 
   it('fails with a readable message when there is no name column', async () => {

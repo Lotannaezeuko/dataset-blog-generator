@@ -7,6 +7,7 @@ import { detectColumns } from './columns'
 import { normaliseRows } from './normalise'
 import { computeStats } from './stats'
 import { geminiCopy, templateCopy } from './copy'
+import { buildMethodology } from './methodology'
 import { makeSlug } from '../../shared/utils/format'
 
 export interface PipelineInput {
@@ -56,6 +57,15 @@ export async function buildBlog(input: PipelineInput): Promise<BlogRecord> {
     mapping,
     stats,
     copy,
+    methodology: buildMethodology({
+      industry: input.industry,
+      geography: input.geography,
+      sourceFile: input.sourceFile,
+      mapping,
+      amountLabel,
+      rows,
+      rawRows: input.rows
+    }),
     rows
   }
 }

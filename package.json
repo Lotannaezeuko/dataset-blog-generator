@@ -7,7 +7,8 @@
     "build": "nuxt build",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "test": "vitest run"
+    "test": "vitest run",
+    "samples": "vite-node scripts/generate-samples.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.35.0",
