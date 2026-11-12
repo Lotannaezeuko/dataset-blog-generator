@@ -39,6 +39,7 @@ function toMarkdown(b: BlogRecord): string {
     ''
   ]
   const section = (heading: string, text?: string) => text && lines.push(`## ${heading}`, '', text, '')
+  section('The companies at the top', c.leaders)
   section('How funding is distributed', c.fundingInsight)
   section(`Where ${b.industry} companies are based`, c.regionInsight)
   section('The most common sectors', c.sectorInsight)

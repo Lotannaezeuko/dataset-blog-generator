@@ -24,7 +24,7 @@ The fintech page is seeded on first boot, so there is something to look at immed
 The app also runs without a key — it falls back to template-written copy.
 
 ```bash
-npm test                     # 26 unit tests, no network or API key needed
+npm test                     # 30 unit tests, no network or API key needed
 npm run build                # production build
 npm run samples -- <label>   # writes the fintech, healthtech and cleantech copy to samples/<label>/
 ```
@@ -112,6 +112,21 @@ above — numbers are computed in code, the model only words them.
   supports it — concentration needs more than ten funded companies, or "the top ten" is
   everyone. The prompt opens the intro with the first finding and builds the sections
   around them; the template uses them too.
+- **Every section makes a point.** Listing counts ("49 have 10-24 staff, 23 have 5-9…")
+  isn't a narrative, so `stats.ts` also computes one comparison per section: whether a few
+  large amounts pull the average above the median, whether the leading region's typical
+  company raises more than elsewhere, which common sector is best funded, and how many
+  companies are small. A "most common company" profile closes the article. Each is skipped
+  when either side of the comparison has fewer than five companies. Sections open with
+  their point and support it with at most two figures.
+- **Writing first, table second.** The page opens with a section on the companies at the
+  top (who they are, from the source's own descriptions, and the share of funding they
+  hold), then two paragraphs per section, then the summary. The 100-row table follows the
+  article, with a link near the top for readers who only want the list.
+- **Gemini gets notes, not sentences.** Given finished sentences, the model pasted them
+  word for word whatever the prompt said. It now receives each finding and section point
+  as a short note plus its figures (`stats.notes`) and has to write the prose itself; the
+  template keeps the finished sentences.
 - **Search queries drive the FAQ.** `searchQueries()` builds the questions people search
   for ("Which UK Fintech company has raised the most?") from the industry and geography,
   and only those the data can answer. Each carries an answer computed in code. Gemini must
@@ -204,8 +219,8 @@ the copy.
 npm test
 ```
 
-26 Vitest tests covering column detection, money parsing, normalisation, statistics, key
-findings, search queries, the funding denominator, the methodology text, Gemini's 503
+30 Vitest tests covering column detection, money parsing, normalisation, statistics, key
+findings, section points, search queries, the funding denominator, the methodology text, Gemini's 503
 retry (with `$fetch` stubbed, so no network) and end-to-end `buildBlog` runs. They run against `server/lib`, which is deliberately plain
 TypeScript with no Nuxt imports, so they need no framework harness, running server, network
 or API key.

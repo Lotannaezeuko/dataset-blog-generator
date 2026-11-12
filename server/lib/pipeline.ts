@@ -33,7 +33,8 @@ export async function buildBlog(input: PipelineInput): Promise<BlogRecord> {
     industry: input.industry,
     geography: input.geography,
     stats,
-    topCompanies: rows.slice(0, 5).map(r => r.name)
+    topCompanies: rows.slice(0, 5).map(r => r.name),
+    leaders: rows.slice(0, 5)
   }
 
   let copy = templateCopy(ctx)

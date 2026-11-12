@@ -70,6 +70,40 @@ describe('fintech seed', () => {
       'London is home to 78 of the 100 companies (78%).'
     ])
   })
+
+  it('gives every section a point to make, computed in code', () => {
+    const { angles } = computeStats(normaliseRows(rows, mapping), mapping.amount!)
+    expect(angles).toEqual({
+      funding: 'Half of the 100 companies have raised £4.1m or less. The average is higher, at £6.2m, because a small number of large amounts pull it up.',
+      regions: 'The median company in London has raised £4.5m, more than the £3.3m raised by the median company elsewhere.',
+      sectors: 'Of the most common sectors, risk and compliance has the best-funded typical company: a median of £6.4m across 15 companies, against £4.1m for the ranking as a whole.',
+      sizes: 'Most companies in the ranking are small: 83 of the 97 with a known size (86%) employ fewer than 25 people.',
+      profile: 'The most common profile in the ranking is a company that is based in London, employs 10-24 people and has raised around £4.1m.'
+    })
+  })
+
+  it('builds the template sections and conclusion around those points', () => {
+    const companies = normaliseRows(rows, mapping)
+    const stats = computeStats(companies, mapping.amount!)
+    const copy = templateCopy({ industry: 'Fintech', geography: 'UK', stats, topCompanies: companies.slice(0, 5).map(c => c.name) })
+    expect(copy.fundingInsight).toMatch(/^Half of the 100 companies/)
+    expect(copy.sizeInsight!.split('\n\n')[0]).toBe(stats.angles.sizes)
+    expect(copy.conclusion).toMatch(/^The most common profile in the ranking/)
+  })
+
+  it('writes about the companies at the top, with their share computed in code', () => {
+    const companies = normaliseRows(rows, mapping)
+    const stats = computeStats(companies, mapping.amount!)
+    const ctx = { industry: 'Fintech', geography: 'UK', stats, topCompanies: companies.slice(0, 5).map(c => c.name), leaders: companies.slice(0, 5) }
+    const leaders = buildFacts(ctx).leaders!
+    expect(leaders.companies[0]).toMatchObject({ rank: 1, name: 'Nevis', raised: '£30.3m', region: 'London' })
+    expect(leaders.companies[0]!.whatTheyDo).toBe('Nevis develops an AI platform for wealth management.')
+    // 30.3 + 27.9 + 24.2 + 23.7 + 20.0 = £126.2m of £622.3m
+    expect(leaders.shareOfAllFundingHeldByThese).toBe('20%')
+    const text = templateCopy(ctx).leaders!
+    expect(text).toMatch(/^Nevis is number 1, with £30\.3m raised, and is based in London\. Nevis develops an AI platform/)
+    expect(text).toContain('Together, the top five hold 20% of all funding in the ranking.')
+  })
 })
 
 describe('a differently shaped dataset', () => {
@@ -102,7 +136,7 @@ describe('a differently shaped dataset', () => {
     expect(buildFacts(ctx).funding!.coversOnly).toBe('the 28 companies with a funding figure')
     const copy = templateCopy(ctx)
     expect(copy.intro).toContain('The 28 companies with a funding figure have raised £567m between them.')
-    expect(copy.conclusion).toMatch(/^The 28 companies with a funding figure have raised £567m/)
+    expect(copy.fundingInsight).toContain('the 28 companies with a funding figure')
     expect(copy.faq[2]!.answer).toMatch(/^The 28 companies with a funding figure/)
   })
 })
@@ -162,6 +196,13 @@ describe('unfamiliar headers', () => {
     const stats = computeStats(companies, mapping.amount!)
     expect(stats.findings).toEqual(['London is home to 4 of the 11 companies with a known location (36%).'])
   })
+
+  it('skips a comparison when either side has fewer than five companies', () => {
+    // Only 4 companies are in London, too few to compare London with elsewhere.
+    const stats = computeStats(companies, mapping.amount!)
+    expect(stats.angles.regions).toBeNull()
+    expect(stats.angles.funding).toMatch(/^Half of the 10 companies with a funding figure/)
+  })
 })
 
 // The worst case for the demo: a CSV with nothing but names and a description.
@@ -190,6 +231,7 @@ describe('a dataset with almost no columns', () => {
     expect(stats.stages).toBeNull()
     expect(stats.years).toBeNull()
     expect(stats.findings).toEqual([])
+    expect(Object.values(stats.angles).every(a => a === null)).toBe(true)
   })
 
   it('still produces a complete page of copy', () => {

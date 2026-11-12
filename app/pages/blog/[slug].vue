@@ -72,6 +72,10 @@ useHead({
   script: [{ type: 'application/ld+json', innerHTML: JSON.stringify(jsonLd) }]
 })
 
+// Copy fields can hold more than one paragraph. The template separates them with a
+// blank line; Gemini sometimes uses a single line break, so split on either.
+const paras = (text?: string) => (text ?? '').split(/\n+/).map(p => p.trim()).filter(Boolean)
+
 // Headline numbers for the stat cards. Only stats that exist for this dataset.
 const cards = computed(() => [
   { label: 'Companies ranked', value: String(s.count) },
@@ -96,40 +100,53 @@ const cards = computed(() => [
           Updated <time :datetime="b.createdAt">{{ new Date(b.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}</time>
           · {{ s.count }} companies
         </p>
-        <p class="lede">{{ b.copy.intro }}</p>
+        <p v-for="p in paras(b.copy.intro)" :key="p" class="lede">{{ p }}</p>
       </header>
 
       <!-- With only the row count there's nothing worth a card row: the figure is
            already in the meta line above and in the ranking heading below. -->
       <StatCards v-if="cards.length > 1" :cards="cards" />
+      <!-- The article comes first and the table after it, so the link lets anyone
+           who only wants the list skip straight to it. -->
+      <p class="jump"><a href="#ranking">Skip to the full ranking of {{ s.count }} companies</a></p>
 
-      <section id="ranking">
-        <h2>The full ranking</h2>
-        <RankingTable :rows="b.rows" :amount-label="s.amountLabel" />
+      <section v-if="b.copy.leaders" id="leaders">
+        <h2>The companies at the top</h2>
+        <p v-for="p in paras(b.copy.leaders)" :key="p">{{ p }}</p>
       </section>
 
       <section v-if="s.funding" id="funding">
         <h2>How funding is distributed</h2>
-        <p>{{ b.copy.fundingInsight }}</p>
+        <p v-for="p in paras(b.copy.fundingInsight)" :key="p">{{ p }}</p>
         <BarList :items="s.funding.bands" unit="companies" />
       </section>
 
       <section v-if="s.regions" id="regions">
         <h2>Where {{ b.industry }} companies are based</h2>
-        <p>{{ b.copy.regionInsight }}</p>
+        <p v-for="p in paras(b.copy.regionInsight)" :key="p">{{ p }}</p>
         <BarList :items="s.regions.counts" unit="companies" />
       </section>
 
       <section v-if="s.tags" id="sectors">
         <h2>The most common sectors</h2>
-        <p>{{ b.copy.sectorInsight }}</p>
+        <p v-for="p in paras(b.copy.sectorInsight)" :key="p">{{ p }}</p>
         <BarList :items="s.tags.top" unit="companies" />
       </section>
 
       <section v-if="s.sizes" id="size">
         <h2>Company size</h2>
-        <p>{{ b.copy.sizeInsight }}</p>
+        <p v-for="p in paras(b.copy.sizeInsight)" :key="p">{{ p }}</p>
         <BarList :items="s.sizes" unit="companies" :sort="false" />
+      </section>
+
+      <section id="summary">
+        <h2>Summary</h2>
+        <p v-for="p in paras(b.copy.conclusion)" :key="p">{{ p }}</p>
+      </section>
+
+      <section id="ranking">
+        <h2>The full ranking</h2>
+        <RankingTable :rows="b.rows" :amount-label="s.amountLabel" />
       </section>
 
       <section v-if="b.copy.faq.length" id="faq">
@@ -138,11 +155,6 @@ const cards = computed(() => [
           <summary><h3>{{ f.question }}</h3></summary>
           <p>{{ f.answer }}</p>
         </details>
-      </section>
-
-      <section id="summary">
-        <h2>Summary</h2>
-        <p>{{ b.copy.conclusion }}</p>
       </section>
 
       <section v-if="b.methodology?.length" id="methodology">

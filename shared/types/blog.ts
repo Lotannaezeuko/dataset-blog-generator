@@ -64,6 +64,40 @@ export interface DatasetStats {
   stages: CountItem[] | null
   years: { median: number; oldest: number; newest: number } | null
   findings: string[] // at most two headline sentences, the article's angle; empty if the data can't support any
+  angles: SectionAngles
+  notes: StoryNotes
+}
+
+/**
+ * The same points as findings and angles, as a short note plus the figures,
+ * not written up. Gemini gets these instead of the sentences, so it has to write
+ * the prose itself rather than copy a sentence out.
+ */
+export interface StoryNote {
+  point: string
+  figures: Record<string, string>
+}
+
+export interface StoryNotes {
+  findings: StoryNote[]
+  funding: StoryNote | null
+  regions: StoryNote | null
+  sectors: StoryNote | null
+  sizes: StoryNote | null
+  profile: StoryNote | null
+}
+
+/**
+ * One computed sentence per section saying what that section shows, so each
+ * section makes a point instead of listing counts. null when the data can't
+ * support a comparison. profile draws the sections together for the conclusion.
+ */
+export interface SectionAngles {
+  funding: string | null
+  regions: string | null
+  sectors: string | null
+  sizes: string | null
+  profile: string | null
 }
 
 /** The prose. Written by Gemini, or by the template fallback. */
@@ -72,6 +106,7 @@ export interface BlogCopy {
   metaDescription: string // aim for 155 characters or fewer
   h1: string
   intro: string
+  leaders?: string // the companies at the top: who they are and what they do
   fundingInsight?: string
   regionInsight?: string
   sectorInsight?: string

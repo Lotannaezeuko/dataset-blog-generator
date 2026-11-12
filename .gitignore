@@ -44,3 +44,9 @@ coverage
 .vscode
 *.swp
 Thumbs.db
+
+# Local before/after copy samples from npm run samples
+samples/
+
+# Personal design-decisions write-up (HTML and PDF)
+docs/

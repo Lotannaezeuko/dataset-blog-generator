@@ -2,7 +2,7 @@
 // configured, fails, or returns something unusable, the template version is used,
 // so a page is always generated.
 
-import type { BlogCopy, DatasetStats } from '#shared/types/blog'
+import type { BlogCopy, CompanyRow, DatasetStats } from '#shared/types/blog'
 import { formatGBP, formatPct } from '../../shared/utils/format'
 
 interface CopyContext {
@@ -10,6 +10,7 @@ interface CopyContext {
   geography: string
   stats: DatasetStats
   topCompanies: string[] // top 5 names, so the copy can mention real examples
+  leaders?: CompanyRow[] // the top 5 rows, for the section on the companies at the top
 }
 
 /**
@@ -24,17 +25,62 @@ function fundedCompanies(stats: DatasetStats): string {
 
 const capitalise = (s: string) => s[0]!.toUpperCase() + s.slice(1)
 
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five']
+const sentence = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
+
+/**
+ * The companies at the top of the ranking, as facts: their own figures, what they
+ * do (the source's description, shortened), what share of all funding they hold,
+ * and the region most of them share. Every figure is computed here.
+ */
+function leaderFacts({ stats, leaders = [] }: CopyContext) {
+  if (leaders.length < 3) return null
+  const f = stats.funding
+  const amounts = leaders.map(l => l.amount)
+  const share = f?.total && amounts.every(a => a !== null)
+    ? (amounts as number[]).reduce((s, a) => s + a, 0) / f.total
+    : null
+  const regionCounts = new Map<string, number>()
+  for (const l of leaders) if (l.region) regionCounts.set(l.region, (regionCounts.get(l.region) ?? 0) + 1)
+  const [region, inRegion] = [...regionCounts].sort((a, b) => b[1] - a[1])[0] ?? [null, 0]
+  return {
+    companies: leaders.map(l => ({
+      rank: l.rank,
+      name: l.name,
+      raised: l.amount !== null ? formatGBP(l.amount) : null,
+      region: l.region,
+      stage: l.stage,
+      employees: l.size,
+      whatTheyDo: l.description ? (l.description.length > 240 ? `${l.description.slice(0, 237)}…` : l.description) : null
+    })),
+    shareOfAllFundingHeldByThese: share !== null ? formatPct(share) : null,
+    sharedRegion: region && inRegion >= 2
+      ? `${inRegion === leaders.length ? `all ${leaders.length}` : `${inRegion} of the ${leaders.length}`} are based in ${region}`
+      : null
+  }
+}
+
 // ---------- 1. Facts: the only material the LLM is allowed to use ----------
 
-export function buildFacts({ industry, geography, stats, topCompanies }: CopyContext) {
+export function buildFacts(ctx: CopyContext) {
+  const { industry, geography, stats, topCompanies } = ctx
   const f = stats.funding, r = stats.regions, t = stats.tags
   return {
     industry,
     geography,
     companiesRanked: stats.count,
     rankedBy: stats.amountLabel, // null when the file had no amount column, so the order is the file's own
-    keyFindings: stats.findings,
+    // Notes, not sentences: given finished sentences, the model pastes them.
+    keyFindings: stats.notes.findings,
+    sectionAngles: {
+      funding: stats.notes.funding,
+      regions: stats.notes.regions,
+      sectors: stats.notes.sectors,
+      sizes: stats.notes.sizes,
+      profile: stats.notes.profile
+    },
     topCompanies,
+    leaders: leaderFacts(ctx),
     funding: f && {
       coversOnly: fundedCompanies(stats),
       total: formatGBP(f.total),
@@ -42,7 +88,8 @@ export function buildFacts({ industry, geography, stats, topCompanies }: CopyCon
       average: formatGBP(f.mean),
       largest: `${f.top.name} (${formatGBP(f.top.amount)})`,
       smallestInList: formatGBP(f.bottom.amount),
-      top10ShareOfTotal: formatPct(f.top10Share)
+      top10ShareOfTotal: formatPct(f.top10Share),
+      mostCommonBand: mostCommon(f.bands)
     },
     regions: r && {
       distinctRegions: r.distinct,
@@ -96,6 +143,12 @@ export function searchQueries({ industry, geography, stats, topCompanies }: Copy
   return queries
 }
 
+/** The largest group, e.g. "£1m to £2.5m (31 companies)". */
+const mostCommon = (items: { label: string; count: number }[]) => {
+  const top = [...items].sort((a, b) => b.count - a.count)[0]
+  return top ? `${top.label} (${top.count} companies)` : null
+}
+
 /** ["a", "b", "c"] -> "a, b and c". Semicolons if an item has its own commas. */
 const joinList = (items: string[]) => {
   const sep = items.some(i => i.includes(',')) ? '; ' : ', '
@@ -106,7 +159,7 @@ const joinList = (items: string[]) => {
 
 export function templateCopy(ctx: CopyContext): BlogCopy {
   const { industry, geography, stats } = ctx
-  const f = stats.funding, r = stats.regions, t = stats.tags
+  const f = stats.funding, r = stats.regions, t = stats.tags, a = stats.angles
   const year = new Date().getFullYear()
   const singleStage = stats.stages?.length === 1 ? `${stats.stages[0]!.label.toLowerCase()}-stage ` : ''
   const allFunded = f && f.count === stats.count
@@ -123,28 +176,63 @@ export function templateCopy(ctx: CopyContext): BlogCopy {
         (!f ? '.' : allFunded ? `, which have raised ${formatGBP(f.total)} between them.` : `. ${capitalise(fundedCompanies(stats))} have raised ${formatGBP(f.total)} between them.`),
       ...stats.findings
     ].join(' '),
+    leaders: templateLeaders(ctx),
+    // Each section is two paragraphs: the computed point it makes, then context.
+    // Without a point it falls back to the largest group.
     fundingInsight: f
-      ? `${f.top.name} leads the list with ${formatGBP(f.top.amount)} raised. The median company has raised ${formatGBP(f.median)}, and the top ten account for ${formatPct(f.top10Share)} of all funding in the list.`
+      ? paragraphs(
+          a.funding,
+          `${f.top.name} leads the list with ${formatGBP(f.top.amount)} raised. The most common funding band is ${mostCommon(f.bands)}.`
+        )
       : undefined,
     regionInsight: r
-      ? `${r.leader.label} is home to ${r.leader.count} of the companies (${formatPct(r.leaderShare)}), with the rest spread across ${r.distinct - 1} other regions.`
+      ? paragraphs(
+          `${r.leader.label} is home to ${r.leader.count} of the companies (${formatPct(r.leaderShare)}), with the rest spread across ${r.distinct - 1} other regions.` +
+            (r.counts[1] ? ` ${r.counts[1].label} is next, with ${r.counts[1].count}.` : ''),
+          a.regions
+        )
       : undefined,
     sectorInsight: t?.top.length
-      ? `The most common focus areas are ${joinList(t.top.slice(0, 3).map(x => `${x.label.toLowerCase()} (${x.count} companies)`))}.`
+      ? paragraphs(`The most common focus areas are ${joinList(t.top.slice(0, 3).map(x => `${x.label.toLowerCase()} (${x.count} companies)`))}.`, a.sectors)
       : undefined,
     sizeInsight: stats.sizes
       ? (() => {
           const top = [...stats.sizes].sort((a, b) => b.count - a.count)[0]!
-          return `The most common company size is ${top.label} employees, which covers ${top.count} of the ${stats.count} companies.`
+          const largest = `The largest group, ${top.count} companies, employs ${top.label} people.`
+          return paragraphs(a.sizes, largest)
         })()
       : undefined,
+    // Draws the sections together: the typical company, then the main finding.
     // A summary of what the data shows, not a claim about where the industry is heading.
-    conclusion: f
-      ? `${capitalise(fundedCompanies(stats))} have raised ${formatGBP(f.total)} in total, with a median of ${formatGBP(f.median)}. The table lists every company, and the methodology explains how the figures were calculated.`
-      : `The table lists all ${stats.count} companies, and the methodology explains how the ranking was compiled.`,
+    conclusion: [
+      a.profile,
+      stats.findings[0],
+      f && !a.profile && !stats.findings.length
+        ? `${capitalise(fundedCompanies(stats))} have raised ${formatGBP(f.total)} in total, with a median of ${formatGBP(f.median)}.`
+        : null,
+      f ? 'The table lists every company, and the methodology explains how the figures were calculated.' : `The table lists all ${stats.count} companies, and the methodology explains how the ranking was compiled.`
+    ].filter(Boolean).join(' '),
     // The first query is always answerable (every dataset has a count), so the FAQ is never empty.
     faq: searchQueries(ctx)
   }
+}
+
+const paragraphs = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join('\n\n')
+
+/** The companies at the top: who they are, then what they share. */
+function templateLeaders(ctx: CopyContext): string | undefined {
+  const l = leaderFacts(ctx)
+  if (!l) return undefined
+  const intro = l.companies.slice(0, 3).map(c =>
+    `${c.name} is number ${c.rank}${c.raised ? `, with ${c.raised} raised` : ''}${c.region ? `, and is based in ${c.region}` : ''}.` +
+    (c.whatTheyDo ? ` ${sentence(c.whatTheyDo)}` : '')
+  ).join(' ')
+  const n = l.companies.length
+  const together = [
+    l.shareOfAllFundingHeldByThese && `Together, the top ${NUMBER_WORDS[n] ?? n} hold ${l.shareOfAllFundingHeldByThese} of all funding in the ranking.`,
+    l.sharedRegion && `${capitalise(l.sharedRegion)}.`
+  ].filter(Boolean).join(' ')
+  return paragraphs(intro, together)
 }
 
 // ---------- 4. Gemini ----------
@@ -157,6 +245,7 @@ const SCHEMA = {
     metaDescription: { type: 'string' },
     h1: { type: 'string' },
     intro: { type: 'string' },
+    leaders: { type: 'string' },
     fundingInsight: { type: 'string' },
     regionInsight: { type: 'string' },
     sectorInsight: { type: 'string' },
@@ -185,12 +274,40 @@ Rules:
 - Write percentages as figures with a % sign, e.g. 37%, never "37 percent".
 - Funding figures describe only funding.coversOnly, never all the companies ranked.
   Make that clear once in each paragraph that gives a funding total, median or
-  average; do not repeat the phrase within a paragraph.
-- keyFindings are the article's angle. Open the intro with the first finding, make
-  each finding the point of the matching *Insight section, and return to them in
-  the conclusion. They are written for you to restate, not paste: use your own
-  wording each time, keeping the figures exact. If keyFindings is empty, lead with
-  the size of the ranking.
+  average; do not repeat the phrase within a paragraph. If coversOnly is "the N
+  companies in this ranking", every company has a figure and it needs no mention.
+
+Narrative:
+The page tells one story about these companies, not a list of statistics. The
+facts already contain the story; your job is to tell it in order.
+- keyFindings are the headline. sectionAngles are the point each section makes;
+  sectionAngles.profile describes the most common company and is for the conclusion.
+  Each is a note: "point" is what it shows, "figures" are the numbers that prove it.
+  Write the point up in your own words with its figures, copied exactly.
+- h1: a headline that states the first key finding in a few words and names the
+  industry and geography, not just "Top N companies". If keyFindings is empty,
+  use the size of the ranking.
+- intro: 2 short paragraphs. The first opens with the first key finding and adds
+  the one figure that puts it in context. The second gives the second finding, or
+  the size of the ranking if there is only one.
+- leaders: 2 short paragraphs on the companies at the top of the ranking. The first
+  introduces the top three: who they are, what they do and their figures. Describe
+  what a company does only from its whatTheyDo, and add nothing to it. The second
+  says what the leaders have in common or how they differ, using
+  shareOfAllFundingHeldByThese and sharedRegion if set. Omit if leaders is null.
+- Each *Insight field: 2 short paragraphs. The first makes the section's point: its
+  sectionAngles entry if there is one, otherwise the largest group and its share.
+  The second adds context from the same facts section, such as the next largest
+  group or the most common band. At most two figures per paragraph. Never list
+  more than three items from a breakdown, and never read out every band or region.
+- Link sections where a fact connects them: e.g. if funding is concentrated and
+  most companies are in one region, the region section can say so in one clause.
+- conclusion: 2 short paragraphs. The first describes the most common company using
+  sectionAngles.profile. The second says in plain words what the sections add up
+  to. Draw only on the facts; no new figures, and no claim the figures do not
+  show. Describe a share only as strongly as its figure supports: "most", "the
+  majority" or "heavily" need a figure above 50% behind them.
+- In any field with more than one paragraph, separate paragraphs with a blank line.
 
 Tone of voice:
 - Authoritative but plain. Write like an analyst briefing a reader, not a marketer
@@ -214,9 +331,7 @@ Tone of voice:
   rankedBy is set), and one concrete figure from the facts. No call to action
   anywhere in it: never tell or invite the reader to do anything (no Explore,
   Discover, Review, See, Find out). No loaded words such as dominance or powerhouse.
-- h1: natural headline, can differ from seoTitle.
-- intro: 2 short paragraphs.
-- Each *Insight field: 2 to 3 sentences on that facts section. Omit a field if its facts are null.
+- Omit an *Insight field if its facts section is null.
 - faq: exactly one entry per target search query below, in the same order. Keep each
   question's meaning and its industry and geography terms. Start each answer with
   the direct answer, in 1 to 2 sentences, using only the facts.
